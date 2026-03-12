@@ -221,7 +221,13 @@ export default defineComponent({
                     if (!editForm.value.startDate) editForm.value.startDate = getTodayDateString();
                 }
 
-                await saveMedia(editForm.value);
+                // Clean computed properties before saving to database
+                const cleanData = { ...editForm.value };
+                delete cleanData.totalMinutes;
+                delete cleanData.lastUpdate;
+                delete cleanData.estimatedCompletion;
+
+                await saveMedia(cleanData);
                 showToast('Media diperbarui', 'success');
                 editModalMedia.value = null;
                 loadData();
