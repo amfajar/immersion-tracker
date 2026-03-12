@@ -329,6 +329,9 @@ export default defineComponent({
 
                 await saveLog(logA);
 
+                // Flag to avoid double-updating progress if media was just auto-created
+                let mediaProgressAlreadyUpdated = false;
+
                 // Auto-add to media library if it doesn't exist
                 if (!form.value.mediaId && ['anime', 'manga', 'ln', 'vn'].includes(form.value.type)) {
                     const newMedia = {
@@ -356,9 +359,11 @@ export default defineComponent({
                     await saveMedia(newMedia);
                     logA.mediaId = newMedia.id;
                     await saveLog(logA); // Update log with new mediaId
+                    mediaProgressAlreadyUpdated = true; // Progress was set when creating the new media
                 }
 
-                if (logA.mediaId && ['anime', 'manga', 'ln', 'vn'].includes(logA.type)) {
+                // Only update progress if media already existed (not just auto-created above)
+                if (!mediaProgressAlreadyUpdated && logA.mediaId && ['anime', 'manga', 'ln', 'vn'].includes(logA.type)) {
                     const media = await getMediaAll().then(list => list.find(m => m.id === logA.mediaId));
                     if (media) {
                         if (media.type === 'anime' && logA.episodes) media.currentUnit = (media.currentUnit || 0) + Number(logA.episodes);
