@@ -1,5 +1,5 @@
 const DB_NAME = 'ImmersionTrackerDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance = null;
 
@@ -31,6 +31,11 @@ export async function initDB() {
 
             if (!db.objectStoreNames.contains('settings')) {
                 db.createObjectStore('settings', { keyPath: 'key' });
+            }
+
+            if (!db.objectStoreNames.contains('todos')) {
+                const todosStore = db.createObjectStore('todos', { keyPath: 'id' });
+                todosStore.createIndex('repeat', 'repeat', { unique: false });
             }
         };
 
@@ -123,51 +128,67 @@ export function getSetting(key) {
     return executeTransaction('settings', 'readonly', (store) => store.get(key));
 }
 
+// === TODOS ===
+export function getTodosAll() {
+    return executeTransaction('todos', 'readonly', (store) => store.getAll());
+}
+
+export function getTodoById(id) {
+    return executeTransaction('todos', 'readonly', (store) => store.get(id));
+}
+
+export function saveTodo(todoObj) {
+    return executeTransaction('todos', 'readwrite', (store) => store.put(todoObj));
+}
+
+export function deleteTodo(id) {
+    return executeTransaction('todos', 'readwrite', (store) => store.delete(id));
+}
+
 // Data Export/Import
 export async function exportData() {
     const data = {
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         media: await getMediaAll(),
         logs: await getLogsAll(),
         achievements: await getAchievements(),
-        settings: await getSettings()
+        settings: await getSettings(),
+        todos: await getTodosAll()
     };
     return data;
 }
 
 export async function importData(data) {
-    if (!data || data.version !== 1) throw new Error("Format JSON tidak valid");
+    if (!data || (data.version !== 1 && data.version !== 2)) throw new Error("Format JSON tidak valid");
 
     const db = await initDB();
 
     // Using simple approach: clear all then put
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(['media', 'logs', 'achievements', 'settings'], 'readwrite');
+        const stores = ['media', 'logs', 'achievements', 'settings', 'todos'];
+        const tx = db.transaction(stores, 'readwrite');
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
 
-        tx.objectStore('media').clear();
-        tx.objectStore('logs').clear();
-        tx.objectStore('achievements').clear();
-        tx.objectStore('settings').clear();
+        stores.forEach(s => tx.objectStore(s).clear());
 
         data.media?.forEach(m => tx.objectStore('media').put(m));
         data.logs?.forEach(l => tx.objectStore('logs').put(l));
         data.achievements?.forEach(a => tx.objectStore('achievements').put(a));
         data.settings?.forEach(s => tx.objectStore('settings').put(s));
+        data.todos?.forEach(t => tx.objectStore('todos').put(t));
     });
 }
+
 export async function clearAllData() {
     const db = await initDB();
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(['media', 'logs', 'achievements', 'settings'], 'readwrite');
+        const stores = ['media', 'logs', 'achievements', 'settings', 'todos'];
+        const tx = db.transaction(stores, 'readwrite');
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
 
-        tx.objectStore('media').clear();
-        tx.objectStore('logs').clear();
-        tx.objectStore('achievements').clear();
-        tx.objectStore('settings').clear();
+        stores.forEach(s => tx.objectStore(s).clear());
     });
 }

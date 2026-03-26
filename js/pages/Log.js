@@ -1,6 +1,6 @@
 import { defineComponent, ref, computed, inject, onMounted, watch } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js';
 import Timer from '../components/Timer.js';
-import { getMediaAll, saveLog, getLogsAll, deleteLog, saveMedia } from '../db.js';
+import { getMediaAll, saveLog, getLogsAll, deleteLog, saveMedia, getTodosAll, saveTodo } from '../db.js';
 import { convertToMinutes, getTodayDateString, getCurrentTimeHHMM, generateUUID } from '../utils.js';
 import { checkAchievements } from '../gamification.js';
 import { searchAniList } from '../api/anilist.js';
@@ -13,6 +13,42 @@ export default defineComponent({
     setup() {
         const showToast = inject('showToast');
         const showAchievement = inject('showAchievement');
+
+        // === TODO POPUP ===
+        const todayStr = getTodayDateString();
+        const showTodoPopup = ref(false);
+        const popupTodos = ref([]); // active todos for today
+
+        function isTodoActiveOnDate(todo, dateStr) {
+            const d = new Date(dateStr + 'T00:00:00');
+            const dow = d.getDay();
+            switch (todo.repeat) {
+                case 'daily': return true;
+                case 'weekdays': return dow >= 1 && dow <= 5;
+                case 'weekly': return Array.isArray(todo.repeatDays) && todo.repeatDays.includes(dow);
+                case 'none':
+                default:
+                    if (!todo.dueDate) return true;
+                    return todo.dueDate === dateStr;
+            }
+        }
+
+        const toggleTodoDone = async (todo) => {
+            try {
+                const plain = JSON.parse(JSON.stringify(todo));
+                const completions = { ...(plain.completions || {}) };
+                if (completions[todayStr]) { delete completions[todayStr]; }
+                else { completions[todayStr] = true; }
+                const updated = { ...plain, completions };
+                await saveTodo(updated);
+                const idx = popupTodos.value.findIndex(t => t.id === todo.id);
+                if (idx !== -1) popupTodos.value.splice(idx, 1, updated);
+            } catch (e) {
+                console.error('toggleTodoDone error:', e);
+            }
+        };
+
+        const closeTodoPopup = () => { showTodoPopup.value = false; };
 
         const mediaList = ref([]);
         const recentLogs = ref([]);
@@ -270,6 +306,7 @@ export default defineComponent({
         };
 
         const saveSession = async () => {
+            const wasEditing = isEditing.value; // capture before it's cleared later
             const durationMin = previewMinutes.value;
             if (durationMin <= 0 && form.value.type !== 'manga') {
                 showToast('Durasi/Menit wajib diisi dan lebih dari 0', 'error');
@@ -399,10 +436,20 @@ export default defineComponent({
 
                 await checkAchievements(showAchievement);
 
-                showToast(isEditing.value ? 'Log diperbarui!' : 'Sesi berhasil disimpan!', 'success');
+                showToast(wasEditing ? 'Log diperbarui!' : 'Sesi berhasil disimpan!', 'success');
                 showForm.value = false;
                 isEditing.value = false;
                 loadData();
+
+                // Show todo quick-check popup (only for new logs, not edits)
+                if (!wasEditing) {
+                    const allTodos = await getTodosAll();
+                    const active = allTodos.filter(t => isTodoActiveOnDate(t, todayStr));
+                    if (active.length > 0) {
+                        popupTodos.value = active;
+                        showTodoPopup.value = true;
+                    }
+                }
 
             } catch (e) {
                 console.error(e);
@@ -472,7 +519,8 @@ export default defineComponent({
             isLoading, mediaList, recentLogs, activeTab, showForm, isTimerSession, isEditing,
             form, previewMinutes, formatShortDur, handleTimerStop, openManualForm, closeManualForm, modalTitle,
             saveSession, confirmDeletePair, openEditLog,
-            apiLoading, searchApiQuery, searchApiResults, showDropdown, selectMediaResult, hideDropdown
+            apiLoading, searchApiQuery, searchApiResults, showDropdown, selectMediaResult, hideDropdown,
+            showTodoPopup, popupTodos, toggleTodoDone, closeTodoPopup, todayStr,
         };
     },
     template: `
@@ -770,6 +818,7 @@ export default defineComponent({
                       </div>
                   </div>
               </div>
+              </div>
               
               <div class="px-6 py-5 border-t border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 flex justify-between items-center">
                   <div class="flex flex-col">
@@ -785,6 +834,62 @@ export default defineComponent({
           </div>
       </div>
       </transition>
+
+      <!-- ===== Todo Quick-Check Popup ===== -->
+      <transition name="slide-up">
+        <div v-if="showTodoPopup" class="fixed inset-x-0 bottom-0 z-[200] flex justify-center px-4 pb-4 md:items-center md:inset-0">
+          <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="closeTodoPopup"></div>
+          <div class="relative w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 animate-scale-in overflow-hidden">
+
+            <!-- Header -->
+            <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+              <div>
+                <h3 class="font-bold text-gray-900 dark:text-white text-sm">Centang tugas yang selesai?</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Tugas aktif hari ini</p>
+              </div>
+              <button @click="closeTodoPopup" class="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            <!-- Todo list -->
+            <div class="px-5 py-4 space-y-2 max-h-64 overflow-y-auto">
+              <button v-for="todo in popupTodos" :key="todo.id"
+                @click="toggleTodoDone(todo)"
+                class="w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left"
+                :class="todo.completions?.[todayStr]
+                  ? 'border-green-400 bg-green-50 dark:bg-green-900/20'
+                  : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600'">
+                <!-- Circle check -->
+                <span class="flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
+                  :class="todo.completions?.[todayStr]
+                    ? 'bg-green-500 border-green-500 text-white'
+                    : 'border-gray-300 dark:border-gray-600'">
+                  <svg v-if="todo.completions?.[todayStr]" class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                  </svg>
+                </span>
+                <span class="flex-1 text-sm font-semibold"
+                  :class="todo.completions?.[todayStr] ? 'line-through text-gray-400' : 'text-gray-800 dark:text-gray-100'">
+                  {{ todo.title }}
+                </span>
+              </button>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-5 pb-5 pt-3 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <span class="text-xs text-gray-400">
+                {{ popupTodos.filter(t => t.completions?.[todayStr]).length }} / {{ popupTodos.length }} selesai
+              </span>
+              <button @click="closeTodoPopup"
+                class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-colors">
+                Selesai
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+
     </div>
   `
 });

@@ -5,6 +5,7 @@ import Log from './pages/Log.js';
 import Library from './pages/Library.js';
 import Stats from './pages/Stats.js';
 import Settings from './pages/Settings.js';
+import TodoList from './pages/TodoList.js';
 import Toast from './components/Toast.js';
 
 import AchievementsComponent from './components/Achievements.js';
@@ -18,7 +19,8 @@ const App = {
     Log,
     Library,
     Stats,
-    Settings
+    Settings,
+    TodoList
   },
   setup() {
     const currentRoute = ref(window.location.hash || '#/dashboard');
@@ -64,6 +66,7 @@ const App = {
         case '#/library': return 'Library';
         case '#/stats': return 'Stats';
         case '#/settings': return 'Settings';
+        case '#/todos': return 'TodoList';
         default: return 'Dashboard';
       }
     });
@@ -112,6 +115,9 @@ const App = {
           </a>
           <a href="#/stats" class="flex-1 md:flex-none p-4 text-center md:text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" :class="{ 'text-indigo-600 dark:text-indigo-400 font-semibold border-t-2 md:border-t-0 md:border-l-4 border-indigo-600 dark:border-indigo-400': currentRoute === '#/stats', 'text-gray-500 dark:text-gray-400': currentRoute !== '#/stats' }">
             <span class="block">Stats</span>
+          </a>
+          <a href="#/todos" class="flex-1 md:flex-none p-4 text-center md:text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" :class="{ 'text-indigo-600 dark:text-indigo-400 font-semibold border-t-2 md:border-t-0 md:border-l-4 border-indigo-600 dark:border-indigo-400': currentRoute === '#/todos', 'text-gray-500 dark:text-gray-400': currentRoute !== '#/todos' }">
+            <span class="block">Todos</span>
           </a>
            <a href="#/settings" class="flex-1 md:flex-none p-4 text-center md:text-left hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors" :class="{ 'text-indigo-600 dark:text-indigo-400 font-semibold border-t-2 md:border-t-0 md:border-l-4 border-indigo-600 dark:border-indigo-400': currentRoute === '#/settings', 'text-gray-500 dark:text-gray-400': currentRoute !== '#/settings' }">
             <span class="block">Settings</span>
